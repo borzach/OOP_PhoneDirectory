@@ -1,4 +1,7 @@
 import javax.swing.*;
+import javax.swing.event.ListSelectionEvent;
+import javax.swing.event.ListSelectionListener;
+import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.awt.event.*;
 import java.io.*;
@@ -25,69 +28,39 @@ class User {
         return name;
     }
 
+    public void setName(String name) {
+        this.name = name;
+    }
+
     public String getPhoneNumber() {
         return phoneNumber;
+    }
+
+    public void setPhoneNumber(String phoneNumber) {
+        this.phoneNumber = phoneNumber;
     }
 }
 
 // Base class for GUI frame
 class BaseFrame extends JFrame {
-    protected JTextArea textArea;
-    protected JButton saveButton;
-    protected JButton addButton;
-    protected JButton searchButton;
+    protected JTable table;
+    protected DefaultTableModel tableModel;
 
     public BaseFrame(String title) {
         super(title);
 
-        // Create components
-        textArea = new JTextArea();
-        saveButton = new JButton("Save");
-        addButton = new JButton("Add User");
-        searchButton = new JButton("Search");
+        // Create table model with column names
+        String[] columnNames = {"Name", "Phone Number"};
+        tableModel = new DefaultTableModel(columnNames, 0);
 
-        // Set layout
-        setLayout(new BorderLayout());
+        // Create table with the table model
+        table = new JTable(tableModel);
 
-        // Create panel for buttons
-        JPanel buttonPanel = new JPanel();
-        buttonPanel.add(saveButton);
-        buttonPanel.add(addButton);
-        buttonPanel.add(searchButton);
+        // Add table to a scroll pane
+        JScrollPane scrollPane = new JScrollPane(table);
 
-        // Add components to the frame
-        add(new JScrollPane(textArea), BorderLayout.CENTER);
-        add(buttonPanel, BorderLayout.SOUTH);
-
-        // Event listener for save button
-        saveButton.addActionListener(new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-                try {
-                    saveDataToFile();
-                } catch (IOException ex) {
-                    JOptionPane.showMessageDialog(BaseFrame.this, "Error saving data to file", "Error", JOptionPane.ERROR_MESSAGE);
-                }
-            }
-        });
-
-        // Event listener for add button
-        addButton.addActionListener(new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-                addUser();
-            }
-        });
-
-        // Event listener for search button
-        searchButton.addActionListener(new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-                searchUser();
-            }
-        });
-    }
-
-    // Method to be implemented by derived classes
-    protected void saveDataToFile() throws IOException {
-        throw new UnsupportedOperationException();
+        // Add scroll pane to the frame
+        add(scrollPane, BorderLayout.CENTER);
     }
 
     // Method to be implemented by derived classes
@@ -116,6 +89,18 @@ class MainFrame extends BaseFrame implements FileOperations {
         } catch (IOException e) {
             JOptionPane.showMessageDialog(this, "Error reading data from file", "Error", JOptionPane.ERROR_MESSAGE);
         }
+
+        // Event listener for table row selection
+        table.getSelectionModel().addListSelectionListener(new ListSelectionListener() {
+            public void valueChanged(ListSelectionEvent event) {
+                if (!event.getValueIsAdjusting()) {
+                    int selectedRow = table.getSelectedRow();
+                    if (selectedRow != -1) {
+                        showUserPopup(selectedRow);
+                    }
+                }
+            }
+        });
     }
 
     // Implement interface methods
@@ -142,12 +127,6 @@ class MainFrame extends BaseFrame implements FileOperations {
         writer.close();
     }
 
-    // Override method for saving data to file
-    protected void saveDataToFile() throws IOException {
-        writeData();
-        JOptionPane.showMessageDialog(this, "Data saved successfully", "Success", JOptionPane.INFORMATION_MESSAGE);
-    }
-
     // Override method for adding a user
     protected void addUser() {
         String name = JOptionPane.showInputDialog(this, "Enter Name:");
@@ -156,6 +135,12 @@ class MainFrame extends BaseFrame implements FileOperations {
             User user = new User(name, phoneNumber);
             users.add(user);
             displayUsers();
+            try {
+                writeData(); // Save data to file
+                JOptionPane.showMessageDialog(this, "Data saved successfully", "Success", JOptionPane.INFORMATION_MESSAGE);
+            } catch (IOException e) {
+                JOptionPane.showMessageDialog(this, "Error saving data to file", "Error", JOptionPane.ERROR_MESSAGE);
+            }
         }
     }
 
@@ -163,28 +148,75 @@ class MainFrame extends BaseFrame implements FileOperations {
     protected void searchUser() {
         String searchName = JOptionPane.showInputDialog(this, "Enter Name to Search:");
         if (searchName != null) {
-            boolean found = false;
+            List<User> searchResults = new ArrayList<>();
             for (User user : users) {
                 if (user.getName().equalsIgnoreCase(searchName)) {
-                    found = true;
-                    String message = "Name: " + user.getName() + "\nPhone Number: " + user.getPhoneNumber();
-                    JOptionPane.showMessageDialog(this, message, "User Found", JOptionPane.INFORMATION_MESSAGE);
-                    break;
+                    searchResults.add(user);
                 }
             }
-            if (!found) {
-                JOptionPane.showMessageDialog(this, "User not found", "Not Found", JOptionPane.WARNING_MESSAGE);
-            }
+            displayUsers(searchResults);
         }
     }
 
-    // Display all users in the text area
-    private void displayUsers() {
-        StringBuilder content = new StringBuilder();
-        for (User user : users) {
-            content.append(user.getName()).append(", ").append(user.getPhoneNumber()).append("\n");
+    // Display users in the table
+    private void displayUsers(List<User> displayUsers) {
+        tableModel.setRowCount(0); // Clear existing rows
+        for (User user : displayUsers) {
+            Object[] rowData = {user.getName(), user.getPhoneNumber()};
+            tableModel.addRow(rowData);
         }
-        textArea.setText(content.toString());
+    }
+
+    // Display all users in the table
+    void displayUsers() {
+        displayUsers(users);
+    }
+
+    // Show a popup with user details
+    private void showUserPopup(int rowIndex) {
+        User user = users.get(rowIndex);
+        JTextField nameField = new JTextField(user.getName());
+        JTextField phoneNumberField = new JTextField(user.getPhoneNumber());
+
+        Object[] message = {
+                "Name:", nameField,
+                "Phone Number:", phoneNumberField
+        };
+
+        int option = JOptionPane.showOptionDialog(
+                this,
+                message,
+                "User Details",
+                JOptionPane.OK_CANCEL_OPTION,
+                JOptionPane.INFORMATION_MESSAGE,
+                null,
+                new String[]{"Save", "Delete"},
+                "Save"
+        );
+
+        if (option == JOptionPane.OK_OPTION) {
+            user.setName(nameField.getText());
+            user.setPhoneNumber(phoneNumberField.getText());
+            displayUsers();
+            try {
+                writeData(); // Save data to file
+                JOptionPane.showMessageDialog(this, "Data saved successfully", "Success", JOptionPane.INFORMATION_MESSAGE);
+            } catch (IOException e) {
+                JOptionPane.showMessageDialog(this, "Error saving data to file", "Error", JOptionPane.ERROR_MESSAGE);
+            }
+        } else if (option == 1) { // Delete button pressed
+            int confirmOption = JOptionPane.showConfirmDialog(this, "Are you sure you want to delete this user?", "Confirm Deletion", JOptionPane.YES_NO_OPTION);
+            if (confirmOption == JOptionPane.YES_OPTION) {
+                users.remove(user);
+                displayUsers();
+                try {
+                    writeData(); // Save data to file
+                    JOptionPane.showMessageDialog(this, "User deleted successfully", "Success", JOptionPane.INFORMATION_MESSAGE);
+                } catch (IOException e) {
+                    JOptionPane.showMessageDialog(this, "Error saving data to file", "Error", JOptionPane.ERROR_MESSAGE);
+                }
+            }
+        }
     }
 }
 
@@ -198,9 +230,41 @@ public class PhoneDirectory {
     }
 
     private static void createAndShowGUI() {
-        MainFrame frame = new MainFrame("Phone Directory", "phone_directory.txt");
+        MainFrame frame = new MainFrame("Phone Directory", "random_data.txt");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        frame.setSize(400, 300);
+
+        // Add buttons and search field to a panel
+        JPanel buttonPanel = new JPanel();
+        JButton homeButton = new JButton("Home"); // Add Home button
+        JButton addButton = new JButton("Add User");
+        JButton searchButton = new JButton("Search");
+        buttonPanel.add(homeButton);
+        buttonPanel.add(addButton);
+        buttonPanel.add(searchButton);
+        frame.add(buttonPanel, BorderLayout.SOUTH);
+
+        // Event listener for Home button
+        homeButton.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent e) {
+                frame.displayUsers();
+            }
+        });
+
+        // Event listener for add button
+        addButton.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent e) {
+                frame.addUser();
+            }
+        });
+
+        // Event listener for search button
+        searchButton.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent e) {
+                frame.searchUser();
+            }
+        });
+
+        frame.pack();
         frame.setLocationRelativeTo(null);
         frame.setVisible(true);
     }
